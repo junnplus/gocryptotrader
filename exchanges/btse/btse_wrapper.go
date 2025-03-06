@@ -162,6 +162,9 @@ func (b *BTSE) SetDefaults() {
 	b.WebsocketResponseMaxLimit = exchange.DefaultWebsocketResponseMaxLimit
 	b.WebsocketResponseCheckTimeout = exchange.DefaultWebsocketResponseCheckTimeout
 	b.WebsocketOrderbookBufferLimit = exchange.DefaultWebsocketOrderbookBufferLimit
+
+	b.OrderBookService = orderbook.GetService()
+	b.AccountService = account.GetService()
 }
 
 // Setup takes in the supplied exchange configuration details and sets params
@@ -262,7 +265,8 @@ func (b *BTSE) UpdateTickers(ctx context.Context, a asset.Item) error {
 				High:         tickers[x].High24Hr,
 				OpenInterest: tickers[x].OpenInterest,
 				ExchangeName: b.Name,
-				AssetType:    a})
+				AssetType:    a,
+			})
 		}
 		if err != nil {
 			errs = common.AppendError(errs, err)
@@ -300,7 +304,8 @@ func (b *BTSE) UpdateTicker(ctx context.Context, p currency.Pair, a asset.Item) 
 		Volume:       ticks[0].Volume,
 		High:         ticks[0].High24Hr,
 		ExchangeName: b.Name,
-		AssetType:    a})
+		AssetType:    a,
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -309,6 +314,9 @@ func (b *BTSE) UpdateTicker(ctx context.Context, p currency.Pair, a asset.Item) 
 
 // UpdateOrderbook updates and returns the orderbook for a currency pair
 func (b *BTSE) UpdateOrderbook(ctx context.Context, p currency.Pair, assetType asset.Item) (*orderbook.Base, error) {
+	if b.OrderBookService == nil {
+		return nil, fmt.Errorf("orderbook service %w", common.ErrNilPointer)
+	}
 	if p.IsEmpty() {
 		return nil, currency.ErrCurrencyPairEmpty
 	}
@@ -354,17 +362,19 @@ func (b *BTSE) UpdateOrderbook(ctx context.Context, p currency.Pair, assetType a
 	book.Pair = p
 	book.Exchange = b.Name
 	book.Asset = assetType
-	err = book.Process()
-	if err != nil {
-		return book, err
+	if err := b.OrderBookService.Update(book); err != nil {
+		return nil, err
 	}
-	return orderbook.Get(b.Name, p, assetType)
+	return b.OrderBookService.Retrieve(b.Name, p, assetType)
 }
 
 // UpdateAccountInfo retrieves balances for all enabled currencies for the
 // BTSE exchange
 func (b *BTSE) UpdateAccountInfo(ctx context.Context, assetType asset.Item) (account.Holdings, error) {
 	var a account.Holdings
+	if b.AccountService == nil {
+		return a, fmt.Errorf("account service %w", common.ErrNilPointer)
+	}
 	balance, err := b.GetWalletInformation(ctx)
 	if err != nil {
 		return a, err
@@ -391,8 +401,7 @@ func (b *BTSE) UpdateAccountInfo(ctx context.Context, assetType asset.Item) (acc
 	if err != nil {
 		return account.Holdings{}, err
 	}
-	err = account.Process(&a, creds)
-	if err != nil {
+	if err := b.AccountService.Update(&a, creds); err != nil {
 		return account.Holdings{}, err
 	}
 
@@ -588,7 +597,7 @@ func (b *BTSE) GetOrderInfo(ctx context.Context, orderID string, _ currency.Pair
 			continue
 		}
 
-		var side = order.Buy
+		side := order.Buy
 		if strings.EqualFold(o[i].Side, order.Ask.String()) {
 			side = order.Sell
 		}
@@ -746,7 +755,7 @@ func (b *BTSE) GetActiveOrders(ctx context.Context, req *order.MultiOrderRequest
 		}
 
 		for i := range resp {
-			var side = order.Buy
+			side := order.Buy
 			if strings.EqualFold(resp[i].Side, order.Ask.String()) {
 				side = order.Sell
 			}

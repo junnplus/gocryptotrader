@@ -181,6 +181,9 @@ func (ok *Okx) SetDefaults() {
 	ok.WebsocketResponseMaxLimit = websocketResponseMaxLimit
 	ok.WebsocketResponseCheckTimeout = websocketResponseMaxLimit
 	ok.WebsocketOrderbookBufferLimit = exchange.DefaultWebsocketOrderbookBufferLimit
+
+	ok.OrderBookService = orderbook.GetService()
+	ok.AccountService = account.GetService()
 }
 
 // Setup takes in the supplied exchange configuration details and sets params
@@ -521,6 +524,9 @@ func (ok *Okx) UpdateTickers(ctx context.Context, assetType asset.Item) error {
 
 // UpdateOrderbook updates and returns the orderbook for a currency pair
 func (ok *Okx) UpdateOrderbook(ctx context.Context, pair currency.Pair, assetType asset.Item) (*orderbook.Base, error) {
+	if ok.OrderBookService == nil {
+		return nil, fmt.Errorf("orderbook service %w", common.ErrNilPointer)
+	}
 	if pair.IsEmpty() {
 		return nil, currency.ErrCurrencyPairEmpty
 	}
@@ -570,9 +576,8 @@ func (ok *Okx) UpdateOrderbook(ctx context.Context, pair currency.Pair, assetTyp
 					OrderCount: spreadOrderbook[y].Asks[a][2].Int64(),
 				})
 			}
-			err = book.Process()
-			if err != nil {
-				return book, err
+			if err := ok.OrderBookService.Update(book); err != nil {
+				return nil, err
 			}
 		}
 	case asset.Spot, asset.Options, asset.Margin, asset.PerpetualSwap, asset.Futures:
@@ -615,18 +620,20 @@ func (ok *Okx) UpdateOrderbook(ctx context.Context, pair currency.Pair, assetTyp
 				Price:  orderBookD.Asks[x].DepthPrice.Float64(),
 			}
 		}
-		err = book.Process()
-		if err != nil {
-			return book, err
+		if err := ok.OrderBookService.Update(book); err != nil {
+			return nil, err
 		}
 	default:
 		return nil, fmt.Errorf("%w %v", asset.ErrNotSupported, assetType)
 	}
-	return orderbook.Get(ok.Name, pair, assetType)
+	return ok.OrderBookService.Retrieve(ok.Name, pair, assetType)
 }
 
 // UpdateAccountInfo retrieves balances for all enabled currencies.
 func (ok *Okx) UpdateAccountInfo(ctx context.Context, assetType asset.Item) (account.Holdings, error) {
+	if ok.AccountService == nil {
+		return account.Holdings{}, fmt.Errorf("account service %w", common.ErrNilPointer)
+	}
 	if err := ok.CurrencyPairs.IsAssetEnabled(assetType); err != nil {
 		return account.Holdings{}, err
 	}
@@ -657,9 +664,9 @@ func (ok *Okx) UpdateAccountInfo(ctx context.Context, assetType asset.Item) (acc
 	info.Accounts = append(info.Accounts, acc)
 	creds, err := ok.GetCredentials(ctx)
 	if err != nil {
-		return info, err
+		return account.Holdings{}, err
 	}
-	if err := account.Process(&info, creds); err != nil {
+	if err := ok.AccountService.Update(&info, creds); err != nil {
 		return account.Holdings{}, err
 	}
 	return info, nil

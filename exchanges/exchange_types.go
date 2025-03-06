@@ -11,6 +11,7 @@ import (
 	"github.com/thrasher-corp/gocryptotrader/exchanges/currencystate"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/kline"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/order"
+	"github.com/thrasher-corp/gocryptotrader/exchanges/orderbook"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/protocol"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/request"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/stream"
@@ -258,6 +259,9 @@ type Base struct {
 
 	AssetWebsocketSupport
 	*currencystate.States
+
+	OrderBookService *orderbook.Service
+	AccountService   *account.Service
 }
 
 // url lookup consts
@@ -311,7 +315,8 @@ var keyURLs = []URL{
 	ChainAnalysis,
 	EdgeCase1,
 	EdgeCase2,
-	EdgeCase3}
+	EdgeCase3,
+}
 
 // URL stores uint conversions
 type URL uint16

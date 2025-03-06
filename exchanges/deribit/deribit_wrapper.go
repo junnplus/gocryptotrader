@@ -153,6 +153,9 @@ func (d *Deribit) SetDefaults() {
 	d.WebsocketResponseMaxLimit = exchange.DefaultWebsocketResponseMaxLimit
 	d.WebsocketResponseCheckTimeout = exchange.DefaultWebsocketResponseCheckTimeout
 	d.WebsocketOrderbookBufferLimit = exchange.DefaultWebsocketOrderbookBufferLimit
+
+	d.OrderBookService = orderbook.GetService()
+	d.AccountService = account.GetService()
 }
 
 // Setup takes in the supplied exchange configuration details and sets params
@@ -296,6 +299,9 @@ func (d *Deribit) UpdateTicker(ctx context.Context, p currency.Pair, assetType a
 
 // UpdateOrderbook updates and returns the orderbook for a currency pair
 func (d *Deribit) UpdateOrderbook(ctx context.Context, p currency.Pair, assetType asset.Item) (*orderbook.Base, error) {
+	if d.OrderBookService == nil {
+		return nil, fmt.Errorf("orderbook service %w", common.ErrNilPointer)
+	}
 	p, err := d.FormatExchangeCurrency(p, assetType)
 	if err != nil {
 		return nil, err
@@ -336,16 +342,18 @@ func (d *Deribit) UpdateOrderbook(ctx context.Context, p currency.Pair, assetTyp
 			Amount: obData.Bids[x][1],
 		})
 	}
-	err = book.Process()
-	if err != nil {
-		return book, err
+	if err := d.OrderBookService.Update(book); err != nil {
+		return nil, err
 	}
-	return orderbook.Get(d.Name, p, assetType)
+	return d.OrderBookService.Retrieve(d.Name, p, assetType)
 }
 
 // UpdateAccountInfo retrieves balances for all enabled currencies
 func (d *Deribit) UpdateAccountInfo(ctx context.Context, _ asset.Item) (account.Holdings, error) {
 	var resp account.Holdings
+	if d.AccountService == nil {
+		return resp, fmt.Errorf("account service %w", common.ErrNilPointer)
+	}
 	resp.Exchange = d.Name
 	currencies, err := d.GetCurrencies(ctx)
 	if err != nil {
@@ -369,6 +377,13 @@ func (d *Deribit) UpdateAccountInfo(ctx context.Context, _ asset.Item) (account.
 			Hold:     data.Balance - data.AvailableFunds,
 		})
 		resp.Accounts[x] = subAcc
+	}
+	creds, err := d.GetCredentials(ctx)
+	if err != nil {
+		return account.Holdings{}, err
+	}
+	if err := d.AccountService.Update(&resp, creds); err != nil {
+		return account.Holdings{}, err
 	}
 	return resp, nil
 }
@@ -536,7 +551,7 @@ func (d *Deribit) GetHistoricTrades(ctx context.Context, p currency.Pair, assetT
 	}
 	var resp []trade.Data
 	var tradesData *PublicTradesData
-	var hasMore = true
+	hasMore := true
 	for hasMore {
 		if d.Websocket.IsConnected() {
 			tradesData, err = d.WSRetrieveLastTradesByInstrumentAndTime(instrumentID, "asc", 100, true, timestampStart, timestampEnd)
@@ -859,7 +874,7 @@ func (d *Deribit) GetActiveOrders(ctx context.Context, getOrdersRequest *order.M
 	if len(getOrdersRequest.Pairs) == 0 {
 		return nil, currency.ErrCurrencyPairsEmpty
 	}
-	var resp = []order.Detail{}
+	resp := []order.Detail{}
 	for x := range getOrdersRequest.Pairs {
 		fmtPair, err := d.FormatExchangeCurrency(getOrdersRequest.Pairs[x], getOrdersRequest.AssetType)
 		if err != nil {

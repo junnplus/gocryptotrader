@@ -191,6 +191,9 @@ func (h *HUOBI) SetDefaults() {
 	h.WebsocketResponseMaxLimit = exchange.DefaultWebsocketResponseMaxLimit
 	h.WebsocketResponseCheckTimeout = exchange.DefaultWebsocketResponseCheckTimeout
 	h.WebsocketOrderbookBufferLimit = exchange.DefaultWebsocketOrderbookBufferLimit
+
+	h.OrderBookService = orderbook.GetService()
+	h.AccountService = account.GetService()
 }
 
 // Bootstrap ensures that future contract expiry codes are loaded if AutoPairUpdates is not enabled
@@ -569,6 +572,9 @@ func (h *HUOBI) UpdateTicker(ctx context.Context, p currency.Pair, a asset.Item)
 
 // UpdateOrderbook updates and returns the orderbook for a currency pair
 func (h *HUOBI) UpdateOrderbook(ctx context.Context, p currency.Pair, assetType asset.Item) (*orderbook.Base, error) {
+	if h.OrderBookService == nil {
+		return nil, fmt.Errorf("orderbook service %w", common.ErrNilPointer)
+	}
 	if p.IsEmpty() {
 		return nil, currency.ErrCurrencyPairEmpty
 	}
@@ -654,11 +660,10 @@ func (h *HUOBI) UpdateOrderbook(ctx context.Context, p currency.Pair, assetType 
 			}
 		}
 	}
-	err = book.Process()
-	if err != nil {
-		return book, err
+	if err := h.OrderBookService.Update(book); err != nil {
+		return nil, err
 	}
-	return orderbook.Get(h.Name, p, assetType)
+	return h.OrderBookService.Retrieve(h.Name, p, assetType)
 }
 
 // GetAccountID returns the account ID for trades
@@ -679,6 +684,9 @@ func (h *HUOBI) GetAccountID(ctx context.Context) ([]Account, error) {
 // HUOBI exchange - to-do
 func (h *HUOBI) UpdateAccountInfo(ctx context.Context, assetType asset.Item) (account.Holdings, error) {
 	var info account.Holdings
+	if h.AccountService == nil {
+		return info, fmt.Errorf("account service %w", common.ErrNilPointer)
+	}
 	var acc account.SubAccount
 	info.Exchange = h.Name
 	switch assetType {
@@ -826,7 +834,7 @@ func (h *HUOBI) UpdateAccountInfo(ctx context.Context, assetType asset.Item) (ac
 	if err != nil {
 		return account.Holdings{}, err
 	}
-	if err := account.Process(&info, creds); err != nil {
+	if err := h.AccountService.Update(&info, creds); err != nil {
 		return info, err
 	}
 	return info, nil
@@ -983,7 +991,7 @@ func (h *HUOBI) SubmitOrder(ctx context.Context, s *order.Submit) (*order.Submit
 			return nil, err
 		}
 		var formattedType SpotNewOrderRequestParamsType
-		var params = SpotNewOrderRequestParams{
+		params := SpotNewOrderRequestParams{
 			Amount:    s.Amount,
 			Source:    "api",
 			Symbol:    s.Pair,
@@ -1282,7 +1290,7 @@ func (h *HUOBI) GetOrderInfo(ctx context.Context, orderID string, pair currency.
 		if respData.ID == 0 {
 			return nil, fmt.Errorf("%s - order not found for orderid %s", h.Name, orderID)
 		}
-		var responseID = strconv.FormatInt(respData.ID, 10)
+		responseID := strconv.FormatInt(respData.ID, 10)
 		if responseID != orderID {
 			return nil, errors.New(h.Name + " - GetOrderInfo orderID mismatch. Expected: " +
 				orderID + " Received: " + responseID)

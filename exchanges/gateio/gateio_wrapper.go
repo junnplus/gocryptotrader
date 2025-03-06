@@ -180,6 +180,9 @@ func (g *Gateio) SetDefaults() {
 	g.WebsocketResponseMaxLimit = exchange.DefaultWebsocketResponseMaxLimit
 	g.WebsocketResponseCheckTimeout = exchange.DefaultWebsocketResponseCheckTimeout
 	g.WebsocketOrderbookBufferLimit = exchange.DefaultWebsocketOrderbookBufferLimit
+
+	g.OrderBookService = orderbook.GetService()
+	g.AccountService = account.GetService()
 }
 
 // Setup sets user configuration
@@ -693,6 +696,9 @@ func (g *Gateio) UpdateTickers(ctx context.Context, a asset.Item) error {
 
 // UpdateOrderbook updates and returns the orderbook for a currency pair
 func (g *Gateio) UpdateOrderbook(ctx context.Context, p currency.Pair, a asset.Item) (*orderbook.Base, error) {
+	if g.OrderBookService == nil {
+		return nil, fmt.Errorf("orderbook service %w", common.ErrNilPointer)
+	}
 	p, err := g.FormatExchangeCurrency(p, a)
 	if err != nil {
 		return nil, err
@@ -753,16 +759,18 @@ func (g *Gateio) UpdateOrderbook(ctx context.Context, p currency.Pair, a asset.I
 			Price:  orderbookNew.Asks[x].Price.Float64(),
 		}
 	}
-	err = book.Process()
-	if err != nil {
-		return book, err
+	if err := g.OrderBookService.Update(book); err != nil {
+		return nil, err
 	}
-	return orderbook.Get(g.Name, book.Pair, a)
+	return g.OrderBookService.Retrieve(g.Name, p, a)
 }
 
 // UpdateAccountInfo retrieves balances for all enabled currencies for the
 func (g *Gateio) UpdateAccountInfo(ctx context.Context, a asset.Item) (account.Holdings, error) {
 	var info account.Holdings
+	if g.AccountService == nil {
+		return info, fmt.Errorf("account service %w", common.ErrNilPointer)
+	}
 	info.Exchange = g.Name
 	var err error
 	switch a {
@@ -867,8 +875,7 @@ func (g *Gateio) UpdateAccountInfo(ctx context.Context, a asset.Item) (account.H
 	if err != nil {
 		return info, err
 	}
-	err = account.Process(&info, creds)
-	if err != nil {
+	if err := g.AccountService.Update(&info, creds); err != nil {
 		return info, err
 	}
 	return info, nil

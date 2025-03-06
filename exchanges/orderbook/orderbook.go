@@ -13,6 +13,22 @@ import (
 	"github.com/thrasher-corp/gocryptotrader/log"
 )
 
+// GetService returns the default orderbook service
+func GetService() *Service {
+	return &service
+}
+
+// NewService returns a new orderbook service
+func NewService(mux *dispatch.Mux) *Service {
+	if mux == nil {
+		mux = dispatch.GetNewMux(nil)
+	}
+	return &Service{
+		Mux:   mux,
+		books: make(map[string]Exchange),
+	}
+}
+
 // Get checks and returns the orderbook given an exchange name and currency pair
 func Get(exchange string, p currency.Pair, a asset.Item) (*Base, error) {
 	return service.Retrieve(exchange, p, a)
@@ -43,6 +59,26 @@ func SubscribeToExchangeOrderbooks(exchange string) (dispatch.Pipe, error) {
 
 // Update stores orderbook data
 func (s *Service) Update(b *Base) error {
+	if b.Exchange == "" {
+		return errExchangeNameUnset
+	}
+
+	if b.Pair.IsEmpty() {
+		return errPairNotSet
+	}
+
+	if b.Asset.String() == "" {
+		return errAssetTypeNotSet
+	}
+
+	if b.LastUpdated.IsZero() {
+		b.LastUpdated = time.Now()
+	}
+
+	if err := b.Verify(); err != nil {
+		return err
+	}
+
 	name := strings.ToLower(b.Exchange)
 	mapKey := key.PairAsset{
 		Base:  b.Pair.Base.Item,
@@ -291,25 +327,6 @@ func checkAlignment(depth Tranches, fundingRate, priceDuplication, isIDAligned, 
 // Process processes incoming orderbooks, creating or updating the orderbook
 // list
 func (b *Base) Process() error {
-	if b.Exchange == "" {
-		return errExchangeNameUnset
-	}
-
-	if b.Pair.IsEmpty() {
-		return errPairNotSet
-	}
-
-	if b.Asset.String() == "" {
-		return errAssetTypeNotSet
-	}
-
-	if b.LastUpdated.IsZero() {
-		b.LastUpdated = time.Now()
-	}
-
-	if err := b.Verify(); err != nil {
-		return err
-	}
 	return service.Update(b)
 }
 

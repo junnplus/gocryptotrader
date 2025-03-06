@@ -86,6 +86,9 @@ func (b *Bitflyer) SetDefaults() {
 	if err != nil {
 		log.Errorln(log.ExchangeSys, err)
 	}
+
+	b.OrderBookService = orderbook.GetService()
+	b.AccountService = account.GetService()
 }
 
 // Setup takes in the supplied exchange configuration details and sets params
@@ -174,7 +177,8 @@ func (b *Bitflyer) UpdateTicker(ctx context.Context, p currency.Pair, a asset.It
 		Last:         tickerNew.Last,
 		Volume:       tickerNew.Volume,
 		ExchangeName: b.Name,
-		AssetType:    a})
+		AssetType:    a,
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -193,6 +197,9 @@ func (b *Bitflyer) CheckFXString(p currency.Pair) currency.Pair {
 
 // UpdateOrderbook updates and returns the orderbook for a currency pair
 func (b *Bitflyer) UpdateOrderbook(ctx context.Context, p currency.Pair, assetType asset.Item) (*orderbook.Base, error) {
+	if b.OrderBookService == nil {
+		return nil, fmt.Errorf("orderbook service %w", common.ErrNilPointer)
+	}
 	if p.IsEmpty() {
 		return nil, currency.ErrCurrencyPairEmpty
 	}
@@ -232,12 +239,10 @@ func (b *Bitflyer) UpdateOrderbook(ctx context.Context, p currency.Pair, assetTy
 		}
 	}
 
-	err = book.Process()
-	if err != nil {
-		return book, err
+	if err := b.OrderBookService.Update(book); err != nil {
+		return nil, err
 	}
-
-	return orderbook.Get(b.Name, fPair, assetType)
+	return b.OrderBookService.Retrieve(b.Name, p, assetType)
 }
 
 // UpdateAccountInfo retrieves balances for all enabled currencies on the

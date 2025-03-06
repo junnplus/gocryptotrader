@@ -33,6 +33,22 @@ var (
 	errCredentialsAreNil            = errors.New("credentials are nil")
 )
 
+// GetService returns the default account service
+func GetService() *Service {
+	return &service
+}
+
+// NewService creates a new account service
+func NewService(mux *dispatch.Mux) *Service {
+	if mux == nil {
+		mux = dispatch.GetNewMux(nil)
+	}
+	return &Service{
+		exchangeAccounts: make(map[string]*Accounts),
+		mux:              mux,
+	}
+}
+
 // CollectBalances converts a map of sub-account balances into a slice
 func CollectBalances(accountBalances map[string][]Balance, assetType asset.Item) (accounts []SubAccount, err error) {
 	if accountBalances == nil {

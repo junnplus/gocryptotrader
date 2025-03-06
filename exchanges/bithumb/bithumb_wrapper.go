@@ -129,6 +129,9 @@ func (b *Bithumb) SetDefaults() {
 	b.Websocket = stream.NewWebsocket()
 	b.WebsocketResponseMaxLimit = exchange.DefaultWebsocketResponseMaxLimit
 	b.WebsocketResponseCheckTimeout = exchange.DefaultWebsocketResponseCheckTimeout
+
+	b.OrderBookService = orderbook.GetService()
+	b.AccountService = account.GetService()
 }
 
 // Setup takes in the supplied exchange configuration details and sets params
@@ -253,6 +256,9 @@ func (b *Bithumb) UpdateTicker(ctx context.Context, p currency.Pair, a asset.Ite
 
 // UpdateOrderbook updates and returns the orderbook for a currency pair
 func (b *Bithumb) UpdateOrderbook(ctx context.Context, p currency.Pair, assetType asset.Item) (*orderbook.Base, error) {
+	if b.OrderBookService == nil {
+		return nil, fmt.Errorf("orderbook service %w", common.ErrNilPointer)
+	}
 	if p.IsEmpty() {
 		return nil, currency.ErrCurrencyPairEmpty
 	}
@@ -288,17 +294,19 @@ func (b *Bithumb) UpdateOrderbook(ctx context.Context, p currency.Pair, assetTyp
 		}
 	}
 
-	err = book.Process()
-	if err != nil {
-		return book, err
+	if err := b.OrderBookService.Update(book); err != nil {
+		return nil, err
 	}
-	return orderbook.Get(b.Name, p, assetType)
+	return b.OrderBookService.Retrieve(b.Name, p, assetType)
 }
 
 // UpdateAccountInfo retrieves balances for all enabled currencies for the
 // Bithumb exchange
 func (b *Bithumb) UpdateAccountInfo(ctx context.Context, assetType asset.Item) (account.Holdings, error) {
 	var info account.Holdings
+	if b.AccountService == nil {
+		return info, fmt.Errorf("account service %w", common.ErrNilPointer)
+	}
 	bal, err := b.GetAccountBalance(ctx, "ALL")
 	if err != nil {
 		return info, err
@@ -335,8 +343,7 @@ func (b *Bithumb) UpdateAccountInfo(ctx context.Context, assetType asset.Item) (
 	if err != nil {
 		return account.Holdings{}, err
 	}
-	err = account.Process(&info, creds)
-	if err != nil {
+	if err := b.AccountService.Update(&info, creds); err != nil {
 		return account.Holdings{}, err
 	}
 

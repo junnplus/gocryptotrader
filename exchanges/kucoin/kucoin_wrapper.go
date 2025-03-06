@@ -171,6 +171,9 @@ func (ku *Kucoin) SetDefaults() {
 	ku.WebsocketResponseMaxLimit = exchange.DefaultWebsocketResponseMaxLimit
 	ku.WebsocketResponseCheckTimeout = exchange.DefaultWebsocketResponseCheckTimeout
 	ku.WebsocketOrderbookBufferLimit = exchange.DefaultWebsocketOrderbookBufferLimit
+
+	ku.OrderBookService = orderbook.GetService()
+	ku.AccountService = account.GetService()
 }
 
 // Setup takes in the supplied exchange configuration details and sets params
@@ -376,6 +379,9 @@ func (ku *Kucoin) UpdateTickers(ctx context.Context, assetType asset.Item) error
 
 // UpdateOrderbook updates and returns the orderbook for a currency pair
 func (ku *Kucoin) UpdateOrderbook(ctx context.Context, pair currency.Pair, assetType asset.Item) (*orderbook.Base, error) {
+	if ku.OrderBookService == nil {
+		return nil, fmt.Errorf("orderbook service %w", common.ErrNilPointer)
+	}
 	err := ku.CurrencyPairs.IsAssetEnabled(assetType)
 	if err != nil {
 		return nil, err
@@ -405,15 +411,17 @@ func (ku *Kucoin) UpdateOrderbook(ctx context.Context, pair currency.Pair, asset
 		Asks:            ordBook.Asks,
 		Bids:            ordBook.Bids,
 	}
-	err = book.Process()
-	if err != nil {
-		return book, err
+	if err := ku.OrderBookService.Update(book); err != nil {
+		return nil, err
 	}
-	return orderbook.Get(ku.Name, pair, assetType)
+	return ku.OrderBookService.Retrieve(ku.Name, pair, assetType)
 }
 
 // UpdateAccountInfo retrieves balances for all enabled currencies
 func (ku *Kucoin) UpdateAccountInfo(ctx context.Context, assetType asset.Item) (account.Holdings, error) {
+	if ku.AccountService == nil {
+		return account.Holdings{}, fmt.Errorf("account service %w", common.ErrNilPointer)
+	}
 	holding := account.Holdings{Exchange: ku.Name}
 	err := ku.CurrencyPairs.IsAssetEnabled(assetType)
 	if err != nil {
@@ -464,6 +472,13 @@ func (ku *Kucoin) UpdateAccountInfo(ctx context.Context, assetType asset.Item) (
 		}
 	default:
 		return holding, fmt.Errorf("%w %v", asset.ErrNotSupported, assetType)
+	}
+	creds, err := ku.GetCredentials(ctx)
+	if err != nil {
+		return account.Holdings{}, err
+	}
+	if err := ku.AccountService.Update(&holding, creds); err != nil {
+		return account.Holdings{}, err
 	}
 	return holding, nil
 }

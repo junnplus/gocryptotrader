@@ -192,6 +192,9 @@ func (k *Kraken) SetDefaults() {
 	k.WebsocketResponseMaxLimit = exchange.DefaultWebsocketResponseMaxLimit
 	k.WebsocketResponseCheckTimeout = exchange.DefaultWebsocketResponseCheckTimeout
 	k.WebsocketOrderbookBufferLimit = exchange.DefaultWebsocketOrderbookBufferLimit
+
+	k.OrderBookService = orderbook.GetService()
+	k.AccountService = account.GetService()
 }
 
 // Setup sets current exchange configuration
@@ -476,6 +479,9 @@ func (k *Kraken) UpdateTicker(ctx context.Context, p currency.Pair, a asset.Item
 
 // UpdateOrderbook updates and returns the orderbook for a currency pair
 func (k *Kraken) UpdateOrderbook(ctx context.Context, p currency.Pair, assetType asset.Item) (*orderbook.Base, error) {
+	if k.OrderBookService == nil {
+		return nil, fmt.Errorf("orderbook service %w", common.ErrNilPointer)
+	}
 	if p.IsEmpty() {
 		return nil, currency.ErrCurrencyPairEmpty
 	}
@@ -533,17 +539,19 @@ func (k *Kraken) UpdateOrderbook(ctx context.Context, p currency.Pair, assetType
 	default:
 		return book, fmt.Errorf("%w %v", asset.ErrNotSupported, assetType)
 	}
-	err = book.Process()
-	if err != nil {
-		return book, err
+	if err := k.OrderBookService.Update(book); err != nil {
+		return nil, err
 	}
-	return orderbook.Get(k.Name, p, assetType)
+	return k.OrderBookService.Retrieve(k.Name, p, assetType)
 }
 
 // UpdateAccountInfo retrieves balances for all enabled currencies for the
 // Kraken exchange - to-do
 func (k *Kraken) UpdateAccountInfo(ctx context.Context, assetType asset.Item) (account.Holdings, error) {
 	var info account.Holdings
+	if k.AccountService == nil {
+		return info, fmt.Errorf("account service %w", common.ErrNilPointer)
+	}
 	var balances []account.Balance
 	info.Exchange = k.Name
 	if !assetTranslator.Seeded() {
@@ -599,7 +607,7 @@ func (k *Kraken) UpdateAccountInfo(ctx context.Context, assetType asset.Item) (a
 	if err != nil {
 		return account.Holdings{}, err
 	}
-	if err := account.Process(&info, creds); err != nil {
+	if err := k.AccountService.Update(&info, creds); err != nil {
 		return account.Holdings{}, err
 	}
 	return info, nil

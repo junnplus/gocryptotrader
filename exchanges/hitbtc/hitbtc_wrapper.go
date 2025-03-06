@@ -129,6 +129,9 @@ func (h *HitBTC) SetDefaults() {
 	h.WebsocketResponseMaxLimit = exchange.DefaultWebsocketResponseMaxLimit
 	h.WebsocketResponseCheckTimeout = exchange.DefaultWebsocketResponseCheckTimeout
 	h.WebsocketOrderbookBufferLimit = exchange.DefaultWebsocketOrderbookBufferLimit
+
+	h.OrderBookService = orderbook.GetService()
+	h.AccountService = account.GetService()
 }
 
 // Setup sets user exchange configuration settings
@@ -243,7 +246,8 @@ func (h *HitBTC) UpdateTickers(ctx context.Context, a asset.Item) error {
 			Pair:         pair,
 			LastUpdated:  tick[x].Timestamp,
 			ExchangeName: h.Name,
-			AssetType:    a})
+			AssetType:    a,
+		})
 		if err != nil {
 			return err
 		}
@@ -261,6 +265,9 @@ func (h *HitBTC) UpdateTicker(ctx context.Context, p currency.Pair, a asset.Item
 
 // UpdateOrderbook updates and returns the orderbook for a currency pair
 func (h *HitBTC) UpdateOrderbook(ctx context.Context, c currency.Pair, assetType asset.Item) (*orderbook.Base, error) {
+	if h.OrderBookService == nil {
+		return nil, fmt.Errorf("orderbook service %w", common.ErrNilPointer)
+	}
 	if c.IsEmpty() {
 		return nil, currency.ErrCurrencyPairEmpty
 	}
@@ -297,17 +304,19 @@ func (h *HitBTC) UpdateOrderbook(ctx context.Context, c currency.Pair, assetType
 			Price:  orderbookNew.Asks[x].Price,
 		}
 	}
-	err = book.Process()
-	if err != nil {
-		return book, err
+	if err := h.OrderBookService.Update(book); err != nil {
+		return nil, err
 	}
-	return orderbook.Get(h.Name, c, assetType)
+	return h.OrderBookService.Retrieve(h.Name, c, assetType)
 }
 
 // UpdateAccountInfo retrieves balances for all enabled currencies for the
 // HitBTC exchange
 func (h *HitBTC) UpdateAccountInfo(ctx context.Context, assetType asset.Item) (account.Holdings, error) {
 	var response account.Holdings
+	if h.AccountService == nil {
+		return response, fmt.Errorf("account service %w", common.ErrNilPointer)
+	}
 	response.Exchange = h.Name
 	accountBalance, err := h.GetBalances(ctx)
 	if err != nil {
@@ -333,8 +342,7 @@ func (h *HitBTC) UpdateAccountInfo(ctx context.Context, assetType asset.Item) (a
 	if err != nil {
 		return account.Holdings{}, err
 	}
-	err = account.Process(&response, creds)
-	if err != nil {
+	if err := h.AccountService.Update(&response, creds); err != nil {
 		return account.Holdings{}, err
 	}
 
@@ -520,10 +528,9 @@ func (h *HitBTC) CancelAllOrders(ctx context.Context, _ *order.Cancel) (order.Ca
 
 	for i := range resp {
 		if resp[i].Status != "canceled" {
-			cancelAllOrdersResponse.Status[strconv.FormatInt(resp[i].ID, 10)] =
-				fmt.Sprintf("Could not cancel order %v. Status: %v",
-					resp[i].ID,
-					resp[i].Status)
+			cancelAllOrdersResponse.Status[strconv.FormatInt(resp[i].ID, 10)] = fmt.Sprintf("Could not cancel order %v. Status: %v",
+				resp[i].ID,
+				resp[i].Status)
 		}
 	}
 

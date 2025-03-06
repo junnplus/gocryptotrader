@@ -134,6 +134,9 @@ func (c *CoinbasePro) SetDefaults() {
 	c.WebsocketResponseMaxLimit = exchange.DefaultWebsocketResponseMaxLimit
 	c.WebsocketResponseCheckTimeout = exchange.DefaultWebsocketResponseCheckTimeout
 	c.WebsocketOrderbookBufferLimit = exchange.DefaultWebsocketOrderbookBufferLimit
+
+	c.OrderBookService = orderbook.GetService()
+	c.AccountService = account.GetService()
 }
 
 // Setup initialises the exchange parameters with the current configuration
@@ -220,6 +223,9 @@ func (c *CoinbasePro) UpdateTradablePairs(ctx context.Context, forceUpdate bool)
 // coinbasepro exchange
 func (c *CoinbasePro) UpdateAccountInfo(ctx context.Context, assetType asset.Item) (account.Holdings, error) {
 	var response account.Holdings
+	if c.AccountService == nil {
+		return response, fmt.Errorf("account service %w", common.ErrNilPointer)
+	}
 	response.Exchange = c.Name
 	accountBalance, err := c.GetAccounts(ctx)
 	if err != nil {
@@ -248,8 +254,7 @@ func (c *CoinbasePro) UpdateAccountInfo(ctx context.Context, assetType asset.Ite
 	if err != nil {
 		return account.Holdings{}, err
 	}
-	err = account.Process(&response, creds)
-	if err != nil {
+	if err := c.AccountService.Update(&response, creds); err != nil {
 		return account.Holdings{}, err
 	}
 
@@ -288,7 +293,8 @@ func (c *CoinbasePro) UpdateTicker(ctx context.Context, p currency.Pair, a asset
 		Pair:         p,
 		LastUpdated:  tick.Time,
 		ExchangeName: c.Name,
-		AssetType:    a}
+		AssetType:    a,
+	}
 
 	err = ticker.ProcessTicker(tickerPrice)
 	if err != nil {
@@ -300,6 +306,9 @@ func (c *CoinbasePro) UpdateTicker(ctx context.Context, p currency.Pair, a asset
 
 // UpdateOrderbook updates and returns the orderbook for a currency pair
 func (c *CoinbasePro) UpdateOrderbook(ctx context.Context, p currency.Pair, assetType asset.Item) (*orderbook.Base, error) {
+	if c.OrderBookService == nil {
+		return nil, fmt.Errorf("orderbook service %w", common.ErrNilPointer)
+	}
 	if p.IsEmpty() {
 		return nil, currency.ErrCurrencyPairEmpty
 	}
@@ -342,11 +351,10 @@ func (c *CoinbasePro) UpdateOrderbook(ctx context.Context, p currency.Pair, asse
 			Price:  obNew.Asks[x].Price,
 		}
 	}
-	err = book.Process()
-	if err != nil {
-		return book, err
+	if err := c.OrderBookService.Update(book); err != nil {
+		return nil, err
 	}
-	return orderbook.Get(c.Name, p, assetType)
+	return c.OrderBookService.Retrieve(c.Name, p, assetType)
 }
 
 // GetAccountFundingHistory returns funding history, deposits and

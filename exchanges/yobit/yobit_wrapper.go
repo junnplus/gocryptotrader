@@ -89,6 +89,9 @@ func (y *Yobit) SetDefaults() {
 	if err != nil {
 		log.Errorln(log.ExchangeSys, err)
 	}
+
+	y.OrderBookService = orderbook.GetService()
+	y.AccountService = account.GetService()
 }
 
 // Setup sets exchange configuration parameters for Yobit
@@ -193,6 +196,9 @@ func (y *Yobit) UpdateTicker(ctx context.Context, p currency.Pair, a asset.Item)
 
 // UpdateOrderbook updates and returns the orderbook for a currency pair
 func (y *Yobit) UpdateOrderbook(ctx context.Context, p currency.Pair, assetType asset.Item) (*orderbook.Base, error) {
+	if y.OrderBookService == nil {
+		return nil, fmt.Errorf("orderbook service %w", common.ErrNilPointer)
+	}
 	if p.IsEmpty() {
 		return nil, currency.ErrCurrencyPairEmpty
 	}
@@ -229,17 +235,19 @@ func (y *Yobit) UpdateOrderbook(ctx context.Context, p currency.Pair, assetType 
 				Amount: orderbookNew.Asks[i][1],
 			})
 	}
-	err = book.Process()
-	if err != nil {
-		return book, err
+	if err := y.OrderBookService.Update(book); err != nil {
+		return nil, err
 	}
-	return orderbook.Get(y.Name, p, assetType)
+	return y.OrderBookService.Retrieve(y.Name, p, assetType)
 }
 
 // UpdateAccountInfo retrieves balances for all enabled currencies for the
 // Yobit exchange
 func (y *Yobit) UpdateAccountInfo(ctx context.Context, assetType asset.Item) (account.Holdings, error) {
 	var response account.Holdings
+	if y.AccountService == nil {
+		return response, fmt.Errorf("account service %w", common.ErrNilPointer)
+	}
 	response.Exchange = y.Name
 	accountBalance, err := y.GetAccountInformation(ctx)
 	if err != nil {
@@ -270,8 +278,7 @@ func (y *Yobit) UpdateAccountInfo(ctx context.Context, assetType asset.Item) (ac
 	if err != nil {
 		return account.Holdings{}, err
 	}
-	err = account.Process(&response, creds)
-	if err != nil {
+	if err := y.AccountService.Update(&response, creds); err != nil {
 		return account.Holdings{}, err
 	}
 

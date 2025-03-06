@@ -110,6 +110,9 @@ func ({{.Variable}} *{{.CapitalName}}) SetDefaults() {
 	{{.Variable}}.WebsocketResponseMaxLimit = exchange.DefaultWebsocketResponseMaxLimit
 	{{.Variable}}.WebsocketResponseCheckTimeout = exchange.DefaultWebsocketResponseCheckTimeout
 	{{.Variable}}.WebsocketOrderbookBufferLimit = exchange.DefaultWebsocketOrderbookBufferLimit
+
+	{{.Variable}}.OrderBookService = orderbook.GetService()
+	{{.Variable}}.AccountService = account.GetService()
 }
 
 // Setup takes in the supplied exchange configuration details and sets params

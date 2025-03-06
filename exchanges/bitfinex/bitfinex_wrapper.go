@@ -180,6 +180,9 @@ func (b *Bitfinex) SetDefaults() {
 	b.WebsocketResponseMaxLimit = exchange.DefaultWebsocketResponseMaxLimit
 	b.WebsocketResponseCheckTimeout = exchange.DefaultWebsocketResponseCheckTimeout
 	b.WebsocketOrderbookBufferLimit = exchange.DefaultWebsocketOrderbookBufferLimit
+
+	b.OrderBookService = orderbook.GetService()
+	b.AccountService = account.GetService()
 }
 
 // Setup takes in the supplied exchange configuration details and sets params
@@ -323,7 +326,8 @@ func (b *Bitfinex) UpdateTickers(ctx context.Context, a asset.Item) error {
 			Volume:       val.Volume,
 			Pair:         pair,
 			AssetType:    a,
-			ExchangeName: b.Name})
+			ExchangeName: b.Name,
+		})
 		if err != nil {
 			errs = common.AppendError(errs, err)
 		}
@@ -341,6 +345,9 @@ func (b *Bitfinex) UpdateTicker(ctx context.Context, p currency.Pair, a asset.It
 
 // UpdateOrderbook updates and returns the orderbook for a currency pair
 func (b *Bitfinex) UpdateOrderbook(ctx context.Context, p currency.Pair, assetType asset.Item) (*orderbook.Base, error) {
+	if b.OrderBookService == nil {
+		return nil, fmt.Errorf("orderbook service %w", common.ErrNilPointer)
+	}
 	if p.IsEmpty() {
 		return nil, currency.ErrCurrencyPairEmpty
 	}
@@ -363,7 +370,7 @@ func (b *Bitfinex) UpdateOrderbook(ctx context.Context, p currency.Pair, assetTy
 		return o, fmt.Errorf("%w %v", asset.ErrNotSupported, assetType)
 	}
 	b.appendOptionalDelimiter(&fPair)
-	var prefix = "t"
+	prefix := "t"
 	if assetType == asset.MarginFunding {
 		prefix = "f"
 	}
@@ -410,17 +417,19 @@ func (b *Bitfinex) UpdateOrderbook(ctx context.Context, p currency.Pair, assetTy
 			}
 		}
 	}
-	err = o.Process()
-	if err != nil {
+	if err := b.OrderBookService.Update(o); err != nil {
 		return nil, err
 	}
-	return orderbook.Get(b.Name, fPair, assetType)
+	return b.OrderBookService.Retrieve(b.Name, p, assetType)
 }
 
 // UpdateAccountInfo retrieves balances for all enabled currencies on the
 // Bitfinex exchange
 func (b *Bitfinex) UpdateAccountInfo(ctx context.Context, assetType asset.Item) (account.Holdings, error) {
 	var response account.Holdings
+	if b.AccountService == nil {
+		return response, fmt.Errorf("account service %w", common.ErrNilPointer)
+	}
 	response.Exchange = b.Name
 
 	accountBalance, err := b.GetAccountBalance(ctx)
@@ -428,7 +437,7 @@ func (b *Bitfinex) UpdateAccountInfo(ctx context.Context, assetType asset.Item) 
 		return response, err
 	}
 
-	var Accounts = []account.SubAccount{
+	Accounts := []account.SubAccount{
 		{ID: "deposit", AssetType: assetType},
 		{ID: "exchange", AssetType: assetType},
 		{ID: "trading", AssetType: assetType},
@@ -455,8 +464,7 @@ func (b *Bitfinex) UpdateAccountInfo(ctx context.Context, assetType asset.Item) 
 	if err != nil {
 		return account.Holdings{}, err
 	}
-	err = account.Process(&response, creds)
-	if err != nil {
+	if err := b.AccountService.Update(&response, creds); err != nil {
 		return account.Holdings{}, err
 	}
 

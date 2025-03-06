@@ -3,6 +3,7 @@ package alphapoint
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strconv"
 	"time"
 
@@ -77,6 +78,9 @@ func (a *Alphapoint) SetDefaults() {
 	if err != nil {
 		log.Errorln(log.ExchangeSys, err)
 	}
+
+	a.OrderBookService = orderbook.GetService()
+	a.AccountService = account.GetService()
 }
 
 // Setup takes in the supplied exchange configuration details and sets params
@@ -104,6 +108,9 @@ func (a *Alphapoint) UpdateTradablePairs(_ context.Context, _ bool) error {
 // Alphapoint exchange
 func (a *Alphapoint) UpdateAccountInfo(ctx context.Context, assetType asset.Item) (account.Holdings, error) {
 	var response account.Holdings
+	if a.AccountService == nil {
+		return response, fmt.Errorf("account service %w", common.ErrNilPointer)
+	}
 	response.Exchange = a.Name
 	acc, err := a.GetAccountInformation(ctx)
 	if err != nil {
@@ -130,8 +137,7 @@ func (a *Alphapoint) UpdateAccountInfo(ctx context.Context, assetType asset.Item
 		return account.Holdings{}, err
 	}
 
-	err = account.Process(&response, creds)
-	if err != nil {
+	if err := a.AccountService.Update(&response, creds); err != nil {
 		return account.Holdings{}, err
 	}
 
@@ -176,6 +182,9 @@ func (a *Alphapoint) UpdateTicker(ctx context.Context, p currency.Pair, assetTyp
 
 // UpdateOrderbook updates and returns the orderbook for a currency pair
 func (a *Alphapoint) UpdateOrderbook(ctx context.Context, p currency.Pair, assetType asset.Item) (*orderbook.Base, error) {
+	if a.OrderBookService == nil {
+		return nil, fmt.Errorf("orderbook service %w", common.ErrNilPointer)
+	}
 	if p.IsEmpty() {
 		return nil, currency.ErrCurrencyPairEmpty
 	}
@@ -208,11 +217,9 @@ func (a *Alphapoint) UpdateOrderbook(ctx context.Context, p currency.Pair, asset
 	orderBook.Exchange = a.Name
 	orderBook.Asset = assetType
 
-	err = orderBook.Process()
-	if err != nil {
-		return orderBook, err
+	if err := a.OrderBookService.Update(orderBook); err != nil {
+		return nil, err
 	}
-
 	return orderbook.Get(a.Name, p, assetType)
 }
 

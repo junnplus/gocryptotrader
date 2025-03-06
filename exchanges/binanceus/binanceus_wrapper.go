@@ -144,6 +144,9 @@ func (bi *Binanceus) SetDefaults() {
 	bi.WebsocketResponseMaxLimit = exchange.DefaultWebsocketResponseMaxLimit
 	bi.WebsocketResponseCheckTimeout = exchange.DefaultWebsocketResponseCheckTimeout
 	bi.WebsocketOrderbookBufferLimit = exchange.DefaultWebsocketOrderbookBufferLimit
+
+	bi.OrderBookService = orderbook.GetService()
+	bi.AccountService = account.GetService()
 }
 
 // Setup takes in the supplied exchange configuration details and sets params
@@ -311,6 +314,9 @@ func (bi *Binanceus) UpdateTickers(ctx context.Context, a asset.Item) error {
 
 // UpdateOrderbook updates and returns the orderbook for a currency pair
 func (bi *Binanceus) UpdateOrderbook(ctx context.Context, pair currency.Pair, assetType asset.Item) (*orderbook.Base, error) {
+	if bi.OrderBookService == nil {
+		return nil, fmt.Errorf("orderbook service %w", common.ErrNilPointer)
+	}
 	if pair.IsEmpty() {
 		return nil, currency.ErrCurrencyPairEmpty
 	}
@@ -345,16 +351,18 @@ func (bi *Binanceus) UpdateOrderbook(ctx context.Context, pair currency.Pair, as
 			Price:  orderbookNew.Asks[x].Price,
 		}
 	}
-	err = book.Process()
-	if err != nil {
-		return book, err
+	if err := bi.OrderBookService.Update(book); err != nil {
+		return nil, err
 	}
-	return orderbook.Get(bi.Name, pair, assetType)
+	return bi.OrderBookService.Retrieve(bi.Name, pair, assetType)
 }
 
 // UpdateAccountInfo retrieves balances for all enabled currencies
 func (bi *Binanceus) UpdateAccountInfo(ctx context.Context, assetType asset.Item) (account.Holdings, error) {
 	var info account.Holdings
+	if bi.AccountService == nil {
+		return info, fmt.Errorf("account service %w", common.ErrNilPointer)
+	}
 	var acc account.SubAccount
 	info.Exchange = bi.Name
 	if assetType != asset.Spot {
@@ -383,7 +391,7 @@ func (bi *Binanceus) UpdateAccountInfo(ctx context.Context, assetType asset.Item
 	if err != nil {
 		return info, err
 	}
-	if err := account.Process(&info, creds); err != nil {
+	if err := bi.AccountService.Update(&info, creds); err != nil {
 		return account.Holdings{}, err
 	}
 	return info, nil

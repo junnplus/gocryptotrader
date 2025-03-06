@@ -141,6 +141,9 @@ func (p *Poloniex) SetDefaults() {
 	p.WebsocketResponseMaxLimit = exchange.DefaultWebsocketResponseMaxLimit
 	p.WebsocketResponseCheckTimeout = exchange.DefaultWebsocketResponseCheckTimeout
 	p.WebsocketOrderbookBufferLimit = exchange.DefaultWebsocketOrderbookBufferLimit
+
+	p.OrderBookService = orderbook.GetService()
+	p.AccountService = account.GetService()
 }
 
 // Setup sets user exchange configuration settings
@@ -257,7 +260,8 @@ func (p *Poloniex) UpdateTickers(ctx context.Context, a asset.Item) error {
 			Volume:       tick[curr].BaseVolume,
 			QuoteVolume:  tick[curr].QuoteVolume,
 			ExchangeName: p.Name,
-			AssetType:    a})
+			AssetType:    a,
+		})
 		if err != nil {
 			return err
 		}
@@ -275,6 +279,9 @@ func (p *Poloniex) UpdateTicker(ctx context.Context, currencyPair currency.Pair,
 
 // UpdateOrderbook updates and returns the orderbook for a currency pair
 func (p *Poloniex) UpdateOrderbook(ctx context.Context, pair currency.Pair, assetType asset.Item) (*orderbook.Base, error) {
+	if p.OrderBookService == nil {
+		return nil, fmt.Errorf("orderbook service %w", common.ErrNilPointer)
+	}
 	if pair.IsEmpty() {
 		return nil, currency.ErrCurrencyPairEmpty
 	}
@@ -331,18 +338,20 @@ func (p *Poloniex) UpdateOrderbook(ctx context.Context, pair currency.Pair, asse
 				Price:  data.Asks[y].Price,
 			}
 		}
-		err = book.Process()
-		if err != nil {
-			return book, err
+		if err = p.OrderBookService.Update(book); err != nil {
+			return nil, err
 		}
 	}
-	return orderbook.Get(p.Name, pair, assetType)
+	return p.OrderBookService.Retrieve(p.Name, pair, assetType)
 }
 
 // UpdateAccountInfo retrieves balances for all enabled currencies for the
 // Poloniex exchange
 func (p *Poloniex) UpdateAccountInfo(ctx context.Context, assetType asset.Item) (account.Holdings, error) {
 	var response account.Holdings
+	if p.AccountService == nil {
+		return response, fmt.Errorf("account service %w", common.ErrNilPointer)
+	}
 	response.Exchange = p.Name
 	accountBalance, err := p.GetBalances(ctx)
 	if err != nil {
@@ -366,8 +375,7 @@ func (p *Poloniex) UpdateAccountInfo(ctx context.Context, assetType asset.Item) 
 	if err != nil {
 		return account.Holdings{}, err
 	}
-	err = account.Process(&response, creds)
-	if err != nil {
+	if err := p.AccountService.Update(&response, creds); err != nil {
 		return account.Holdings{}, err
 	}
 

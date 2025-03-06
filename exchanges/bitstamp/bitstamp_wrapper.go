@@ -128,6 +128,9 @@ func (b *Bitstamp) SetDefaults() {
 	b.WebsocketResponseMaxLimit = exchange.DefaultWebsocketResponseMaxLimit
 	b.WebsocketResponseCheckTimeout = exchange.DefaultWebsocketResponseCheckTimeout
 	b.WebsocketOrderbookBufferLimit = exchange.DefaultWebsocketOrderbookBufferLimit
+
+	b.OrderBookService = orderbook.GetService()
+	b.AccountService = account.GetService()
 }
 
 // Setup sets configuration values to bitstamp
@@ -266,7 +269,8 @@ func (b *Bitstamp) UpdateTicker(ctx context.Context, p currency.Pair, a asset.It
 		Pair:         fPair,
 		LastUpdated:  time.Unix(tick.Timestamp, 0),
 		ExchangeName: b.Name,
-		AssetType:    a})
+		AssetType:    a,
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -288,6 +292,9 @@ func (b *Bitstamp) GetFeeByType(ctx context.Context, feeBuilder *exchange.FeeBui
 
 // UpdateOrderbook updates and returns the orderbook for a currency pair
 func (b *Bitstamp) UpdateOrderbook(ctx context.Context, p currency.Pair, assetType asset.Item) (*orderbook.Base, error) {
+	if b.OrderBookService == nil {
+		return nil, fmt.Errorf("orderbook service %w", common.ErrNilPointer)
+	}
 	if p.IsEmpty() {
 		return nil, currency.ErrCurrencyPairEmpty
 	}
@@ -328,17 +335,19 @@ func (b *Bitstamp) UpdateOrderbook(ctx context.Context, p currency.Pair, assetTy
 		}
 	}
 
-	err = book.Process()
-	if err != nil {
-		return book, err
+	if err := b.OrderBookService.Update(book); err != nil {
+		return nil, err
 	}
-	return orderbook.Get(b.Name, fPair, assetType)
+	return b.OrderBookService.Retrieve(b.Name, p, assetType)
 }
 
 // UpdateAccountInfo retrieves balances for all enabled currencies for the
 // Bitstamp exchange
 func (b *Bitstamp) UpdateAccountInfo(ctx context.Context, assetType asset.Item) (account.Holdings, error) {
 	var response account.Holdings
+	if b.AccountService == nil {
+		return response, fmt.Errorf("account service %w", common.ErrNilPointer)
+	}
 	response.Exchange = b.Name
 	accountBalance, err := b.GetBalance(ctx)
 	if err != nil {
@@ -363,8 +372,7 @@ func (b *Bitstamp) UpdateAccountInfo(ctx context.Context, assetType asset.Item) 
 	if err != nil {
 		return account.Holdings{}, err
 	}
-	err = account.Process(&response, creds)
-	if err != nil {
+	if err := b.AccountService.Update(&response, creds); err != nil {
 		return account.Holdings{}, err
 	}
 

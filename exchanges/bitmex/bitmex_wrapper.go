@@ -157,6 +157,9 @@ func (b *Bitmex) SetDefaults() {
 	b.WebsocketResponseMaxLimit = exchange.DefaultWebsocketResponseMaxLimit
 	b.WebsocketResponseCheckTimeout = exchange.DefaultWebsocketResponseCheckTimeout
 	b.WebsocketOrderbookBufferLimit = exchange.DefaultWebsocketOrderbookBufferLimit
+
+	b.OrderBookService = orderbook.GetService()
+	b.AccountService = account.GetService()
 }
 
 // Setup takes in the supplied exchange configuration details and sets params
@@ -377,7 +380,8 @@ instruments:
 			LastUpdated:  tick[j].Timestamp,
 			ExchangeName: b.Name,
 			OpenInterest: tick[j].OpenInterest,
-			AssetType:    a})
+			AssetType:    a,
+		})
 		if err != nil {
 			return err
 		}
@@ -401,6 +405,9 @@ func (b *Bitmex) UpdateTicker(ctx context.Context, p currency.Pair, a asset.Item
 
 // UpdateOrderbook updates and returns the orderbook for a currency pair
 func (b *Bitmex) UpdateOrderbook(ctx context.Context, p currency.Pair, assetType asset.Item) (*orderbook.Base, error) {
+	if b.OrderBookService == nil {
+		return nil, fmt.Errorf("orderbook service %w", common.ErrNilPointer)
+	}
 	if p.IsEmpty() {
 		return nil, currency.ErrCurrencyPairEmpty
 	}
@@ -426,7 +433,8 @@ func (b *Bitmex) UpdateOrderbook(ctx context.Context, p currency.Pair, assetType
 	orderbookNew, err := b.GetOrderbook(ctx,
 		OrderBookGetL2Params{
 			Symbol: fPair.String(),
-			Depth:  500})
+			Depth:  500,
+		})
 	if err != nil {
 		return book, err
 	}
@@ -453,17 +461,19 @@ func (b *Bitmex) UpdateOrderbook(ctx context.Context, p currency.Pair, assetType
 	}
 	book.Asks.Reverse() // Reverse order of asks to ascending
 
-	err = book.Process()
-	if err != nil {
-		return book, err
+	if err := b.OrderBookService.Update(book); err != nil {
+		return nil, err
 	}
-	return orderbook.Get(b.Name, p, assetType)
+	return b.OrderBookService.Retrieve(b.Name, p, assetType)
 }
 
 // UpdateAccountInfo retrieves balances for all enabled currencies for the
 // Bitmex exchange
 func (b *Bitmex) UpdateAccountInfo(ctx context.Context, assetType asset.Item) (account.Holdings, error) {
 	var info account.Holdings
+	if b.AccountService == nil {
+		return info, fmt.Errorf("account service %w", common.ErrNilPointer)
+	}
 
 	userMargins, err := b.GetAllUserMargin(ctx)
 	if err != nil {
@@ -498,7 +508,7 @@ func (b *Bitmex) UpdateAccountInfo(ctx context.Context, assetType asset.Item) (a
 	if err != nil {
 		return account.Holdings{}, err
 	}
-	if err := account.Process(&info, creds); err != nil {
+	if err := b.AccountService.Update(&info, creds); err != nil {
 		return account.Holdings{}, err
 	}
 
@@ -653,7 +663,7 @@ func (b *Bitmex) SubmitOrder(ctx context.Context, s *order.Submit) (*order.Submi
 		return nil, err
 	}
 
-	var orderNewParams = OrderNewParams{
+	orderNewParams := OrderNewParams{
 		OrderType:     s.Type.Title(),
 		Symbol:        fPair.String(),
 		OrderQuantity: s.Amount,
@@ -685,7 +695,8 @@ func (b *Bitmex) ModifyOrder(ctx context.Context, action *order.Modify) (*order.
 	o, err := b.AmendOrder(ctx, &OrderAmendParams{
 		OrderID:  action.OrderID,
 		OrderQty: int32(action.Amount),
-		Price:    action.Price})
+		Price:    action.Price,
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -831,7 +842,7 @@ func (b *Bitmex) WithdrawCryptocurrencyFunds(ctx context.Context, withdrawReques
 	if err := withdrawRequest.Validate(); err != nil {
 		return nil, err
 	}
-	var r = UserRequestWithdrawalParams{
+	r := UserRequestWithdrawalParams{
 		Address:  withdrawRequest.Crypto.Address,
 		Amount:   withdrawRequest.Amount,
 		Currency: withdrawRequest.Currency.String(),

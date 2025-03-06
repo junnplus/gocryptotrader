@@ -210,6 +210,9 @@ func (by *Bybit) SetDefaults() {
 	by.WebsocketResponseMaxLimit = exchange.DefaultWebsocketResponseMaxLimit
 	by.WebsocketResponseCheckTimeout = exchange.DefaultWebsocketResponseCheckTimeout
 	by.WebsocketOrderbookBufferLimit = exchange.DefaultWebsocketOrderbookBufferLimit
+
+	by.OrderBookService = orderbook.GetService()
+	by.AccountService = account.GetService()
 }
 
 // Setup takes in the supplied exchange configuration details and sets params
@@ -478,6 +481,9 @@ func (by *Bybit) UpdateTicker(ctx context.Context, p currency.Pair, assetType as
 
 // UpdateOrderbook updates and returns the orderbook for a currency pair
 func (by *Bybit) UpdateOrderbook(ctx context.Context, p currency.Pair, assetType asset.Item) (*orderbook.Base, error) {
+	if by.OrderBookService == nil {
+		return nil, fmt.Errorf("orderbook service %w", common.ErrNilPointer)
+	}
 	if p.IsEmpty() {
 		return nil, currency.ErrCurrencyPairEmpty
 	}
@@ -526,16 +532,18 @@ func (by *Bybit) UpdateOrderbook(ctx context.Context, p currency.Pair, assetType
 			Price:  orderbookNew.Asks[x].Price,
 		}
 	}
-	err = book.Process()
-	if err != nil {
-		return book, err
+	if err := by.OrderBookService.Update(book); err != nil {
+		return nil, err
 	}
-	return orderbook.Get(by.Name, p, assetType)
+	return by.OrderBookService.Retrieve(by.Name, p, assetType)
 }
 
 // UpdateAccountInfo retrieves balances for all enabled currencies
 func (by *Bybit) UpdateAccountInfo(ctx context.Context, assetType asset.Item) (account.Holdings, error) {
 	var info account.Holdings
+	if by.AccountService == nil {
+		return info, fmt.Errorf("account service %w", common.ErrNilPointer)
+	}
 	var acc account.SubAccount
 	var accountType string
 	info.Exchange = by.Name
@@ -589,8 +597,7 @@ func (by *Bybit) UpdateAccountInfo(ctx context.Context, assetType asset.Item) (a
 	if err != nil {
 		return account.Holdings{}, err
 	}
-	err = account.Process(&info, creds)
-	if err != nil {
+	if err := by.AccountService.Update(&info, creds); err != nil {
 		return account.Holdings{}, err
 	}
 	return info, nil

@@ -108,6 +108,9 @@ func (c *COINUT) SetDefaults() {
 	c.WebsocketResponseMaxLimit = exchange.DefaultWebsocketResponseMaxLimit
 	c.WebsocketResponseCheckTimeout = exchange.DefaultWebsocketResponseCheckTimeout
 	c.WebsocketOrderbookBufferLimit = exchange.DefaultWebsocketOrderbookBufferLimit
+
+	c.OrderBookService = orderbook.GetService()
+	c.AccountService = account.GetService()
 }
 
 // Setup sets the current exchange configuration
@@ -202,6 +205,9 @@ func (c *COINUT) UpdateTradablePairs(ctx context.Context, forceUpdate bool) erro
 // COINUT exchange
 func (c *COINUT) UpdateAccountInfo(ctx context.Context, assetType asset.Item) (account.Holdings, error) {
 	var info account.Holdings
+	if c.AccountService == nil {
+		return info, fmt.Errorf("account service %w", common.ErrNilPointer)
+	}
 	var bal *UserBalance
 	var err error
 	if c.Websocket.CanUseAuthenticatedWebsocketForWrapper() {
@@ -218,7 +224,7 @@ func (c *COINUT) UpdateAccountInfo(ctx context.Context, assetType asset.Item) (a
 		}
 	}
 
-	var balances = []account.Balance{
+	balances := []account.Balance{
 		{
 			Currency: currency.BCH,
 			Total:    bal.BCH,
@@ -286,8 +292,7 @@ func (c *COINUT) UpdateAccountInfo(ctx context.Context, assetType asset.Item) (a
 	if err != nil {
 		return account.Holdings{}, err
 	}
-	err = account.Process(&info, creds)
-	if err != nil {
+	if err := c.AccountService.Update(&info, creds); err != nil {
 		return account.Holdings{}, err
 	}
 
@@ -337,7 +342,8 @@ func (c *COINUT) UpdateTicker(ctx context.Context, p currency.Pair, a asset.Item
 		Pair:         p,
 		LastUpdated:  time.Unix(0, tick.Timestamp),
 		ExchangeName: c.Name,
-		AssetType:    a})
+		AssetType:    a,
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -347,6 +353,9 @@ func (c *COINUT) UpdateTicker(ctx context.Context, p currency.Pair, a asset.Item
 
 // UpdateOrderbook updates and returns the orderbook for a currency pair
 func (c *COINUT) UpdateOrderbook(ctx context.Context, p currency.Pair, assetType asset.Item) (*orderbook.Base, error) {
+	if c.OrderBookService == nil {
+		return nil, fmt.Errorf("orderbook service %w", common.ErrNilPointer)
+	}
 	if p.IsEmpty() {
 		return nil, currency.ErrCurrencyPairEmpty
 	}
@@ -394,11 +403,10 @@ func (c *COINUT) UpdateOrderbook(ctx context.Context, p currency.Pair, assetType
 			Price:  orderbookNew.Sell[x].Price,
 		}
 	}
-	err = book.Process()
-	if err != nil {
-		return book, err
+	if err := c.OrderBookService.Update(book); err != nil {
+		return nil, err
 	}
-	return orderbook.Get(c.Name, p, assetType)
+	return c.OrderBookService.Retrieve(c.Name, p, assetType)
 }
 
 // GetAccountFundingHistory returns funding history, deposits and

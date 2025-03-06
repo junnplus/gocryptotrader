@@ -101,6 +101,9 @@ func (e *EXMO) SetDefaults() {
 	if err != nil {
 		log.Errorln(log.ExchangeSys, err)
 	}
+
+	e.OrderBookService = orderbook.GetService()
+	e.AccountService = account.GetService()
 }
 
 // Setup takes in the supplied exchange configuration details and sets params
@@ -184,7 +187,8 @@ func (e *EXMO) UpdateTickers(ctx context.Context, a asset.Item) error {
 			Volume:       tick.Volume,
 			LastUpdated:  time.Unix(tick.Updated, 0),
 			ExchangeName: e.Name,
-			AssetType:    a})
+			AssetType:    a,
+		})
 		if err != nil {
 			return err
 		}
@@ -203,6 +207,9 @@ func (e *EXMO) UpdateTicker(ctx context.Context, p currency.Pair, a asset.Item) 
 
 // UpdateOrderbook updates and returns the orderbook for a currency pair
 func (e *EXMO) UpdateOrderbook(ctx context.Context, p currency.Pair, assetType asset.Item) (*orderbook.Base, error) {
+	if e.OrderBookService == nil {
+		return nil, fmt.Errorf("orderbook service %w", common.ErrNilPointer)
+	}
 	if p.IsEmpty() {
 		return nil, currency.ErrCurrencyPairEmpty
 	}
@@ -286,18 +293,21 @@ func (e *EXMO) UpdateOrderbook(ctx context.Context, p currency.Pair, assetType a
 			}
 		}
 
-		err = book.Process()
-		if err != nil {
-			return book, err
+		if err := e.OrderBookService.Update(book); err != nil {
+			return nil, err
 		}
 	}
-	return orderbook.Get(e.Name, p, assetType)
+
+	return e.OrderBookService.Retrieve(e.Name, p, assetType)
 }
 
 // UpdateAccountInfo retrieves balances for all enabled currencies for the
 // Exmo exchange
 func (e *EXMO) UpdateAccountInfo(ctx context.Context, assetType asset.Item) (account.Holdings, error) {
 	var response account.Holdings
+	if e.AccountService == nil {
+		return response, fmt.Errorf("account service %w", common.ErrNilPointer)
+	}
 	response.Exchange = e.Name
 	result, err := e.GetUserInfo(ctx)
 	if err != nil {
@@ -337,8 +347,7 @@ func (e *EXMO) UpdateAccountInfo(ctx context.Context, assetType asset.Item) (acc
 	if err != nil {
 		return account.Holdings{}, err
 	}
-	err = account.Process(&response, creds)
-	if err != nil {
+	if err := e.AccountService.Update(&response, creds); err != nil {
 		return account.Holdings{}, err
 	}
 

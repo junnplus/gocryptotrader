@@ -132,6 +132,9 @@ func (b *BTCMarkets) SetDefaults() {
 	b.WebsocketResponseMaxLimit = exchange.DefaultWebsocketResponseMaxLimit
 	b.WebsocketResponseCheckTimeout = exchange.DefaultWebsocketResponseCheckTimeout
 	b.WebsocketOrderbookBufferLimit = exchange.DefaultWebsocketOrderbookBufferLimit
+
+	b.OrderBookService = orderbook.GetService()
+	b.AccountService = account.GetService()
 }
 
 // Setup takes in an exchange configuration and sets all parameters
@@ -266,6 +269,9 @@ func (b *BTCMarkets) UpdateTicker(ctx context.Context, p currency.Pair, a asset.
 
 // UpdateOrderbook updates and returns the orderbook for a currency pair
 func (b *BTCMarkets) UpdateOrderbook(ctx context.Context, p currency.Pair, assetType asset.Item) (*orderbook.Base, error) {
+	if b.OrderBookService == nil {
+		return nil, fmt.Errorf("orderbook service %w", common.ErrNilPointer)
+	}
 	if p.IsEmpty() {
 		return nil, currency.ErrCurrencyPairEmpty
 	}
@@ -307,16 +313,18 @@ func (b *BTCMarkets) UpdateOrderbook(ctx context.Context, p currency.Pair, asset
 			Price:  tempResp.Asks[y].Price,
 		}
 	}
-	err = book.Process()
-	if err != nil {
-		return book, err
+	if err := b.OrderBookService.Update(book); err != nil {
+		return nil, err
 	}
-	return orderbook.Get(b.Name, p, assetType)
+	return b.OrderBookService.Retrieve(b.Name, p, assetType)
 }
 
 // UpdateAccountInfo retrieves balances for all enabled currencies
 func (b *BTCMarkets) UpdateAccountInfo(ctx context.Context, assetType asset.Item) (account.Holdings, error) {
 	var resp account.Holdings
+	if b.AccountService == nil {
+		return resp, fmt.Errorf("account service %w", common.ErrNilPointer)
+	}
 	data, err := b.GetAccountBalance(ctx)
 	if err != nil {
 		return resp, err
@@ -338,8 +346,7 @@ func (b *BTCMarkets) UpdateAccountInfo(ctx context.Context, assetType asset.Item
 	if err != nil {
 		return account.Holdings{}, err
 	}
-	err = account.Process(&resp, creds)
-	if err != nil {
+	if err := b.AccountService.Update(&resp, creds); err != nil {
 		return account.Holdings{}, err
 	}
 

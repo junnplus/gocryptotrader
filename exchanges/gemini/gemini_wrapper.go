@@ -110,6 +110,9 @@ func (g *Gemini) SetDefaults() {
 	g.WebsocketResponseMaxLimit = exchange.DefaultWebsocketResponseMaxLimit
 	g.WebsocketResponseCheckTimeout = exchange.DefaultWebsocketResponseCheckTimeout
 	g.WebsocketOrderbookBufferLimit = exchange.DefaultWebsocketOrderbookBufferLimit
+
+	g.OrderBookService = orderbook.GetService()
+	g.AccountService = account.GetService()
 }
 
 // Setup sets exchange configuration parameters
@@ -218,6 +221,9 @@ func (g *Gemini) UpdateTradablePairs(ctx context.Context, forceUpdate bool) erro
 // Gemini exchange
 func (g *Gemini) UpdateAccountInfo(ctx context.Context, assetType asset.Item) (account.Holdings, error) {
 	var response account.Holdings
+	if g.AccountService == nil {
+		return response, fmt.Errorf("account service %w", common.ErrNilPointer)
+	}
 	response.Exchange = g.Name
 	accountBalance, err := g.GetBalances(ctx)
 	if err != nil {
@@ -243,8 +249,7 @@ func (g *Gemini) UpdateAccountInfo(ctx context.Context, assetType asset.Item) (a
 	if err != nil {
 		return account.Holdings{}, err
 	}
-	err = account.Process(&response, creds)
-	if err != nil {
+	if err := g.AccountService.Update(&response, creds); err != nil {
 		return account.Holdings{}, err
 	}
 
@@ -277,7 +282,8 @@ func (g *Gemini) UpdateTicker(ctx context.Context, p currency.Pair, a asset.Item
 		Close:        tick.Close,
 		Pair:         fPair,
 		ExchangeName: g.Name,
-		AssetType:    a})
+		AssetType:    a,
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -287,6 +293,9 @@ func (g *Gemini) UpdateTicker(ctx context.Context, p currency.Pair, a asset.Item
 
 // UpdateOrderbook updates and returns the orderbook for a currency pair
 func (g *Gemini) UpdateOrderbook(ctx context.Context, p currency.Pair, assetType asset.Item) (*orderbook.Base, error) {
+	if g.OrderBookService == nil {
+		return nil, fmt.Errorf("orderbook service %w", common.ErrNilPointer)
+	}
 	if p.IsEmpty() {
 		return nil, currency.ErrCurrencyPairEmpty
 	}
@@ -324,11 +333,10 @@ func (g *Gemini) UpdateOrderbook(ctx context.Context, p currency.Pair, assetType
 			Price:  orderbookNew.Asks[x].Price,
 		}
 	}
-	err = book.Process()
-	if err != nil {
-		return book, err
+	if err := g.OrderBookService.Update(book); err != nil {
+		return nil, err
 	}
-	return orderbook.Get(g.Name, fPair, assetType)
+	return g.OrderBookService.Retrieve(g.Name, fPair, assetType)
 }
 
 // GetAccountFundingHistory returns funding history, deposits and
