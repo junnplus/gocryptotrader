@@ -561,8 +561,7 @@ func (g *Gateio) processSpotBalances(data []byte) error {
 	for x := range resp.Result {
 		code := currency.NewCode(resp.Result[x].Currency)
 		accountChanges[x] = account.Change{
-			Exchange: g.Name,
-			Asset:    asset.Spot,
+			Asset: asset.Spot,
 			Balance: account.Balance{
 				Currency:  code,
 				Total:     resp.Result[x].Total.Float64(),
@@ -590,8 +589,7 @@ func (g *Gateio) processMarginBalances(data []byte) error {
 	for x := range resp.Result {
 		code := currency.NewCode(resp.Result[x].Currency)
 		accountChange[x] = account.Change{
-			Exchange: g.Name,
-			Asset:    asset.Margin,
+			Asset: asset.Margin,
 			Balance: account.Balance{
 				Currency:  code,
 				Total:     resp.Result[x].Available.Float64() + resp.Result[x].Freeze.Float64(),
@@ -635,9 +633,8 @@ func (g *Gateio) processCrossMarginBalance(data []byte) error {
 	for x := range resp.Result {
 		code := currency.NewCode(resp.Result[x].Currency)
 		accountChanges[x] = account.Change{
-			Exchange: g.Name,
-			Asset:    asset.Margin,
-			Account:  resp.Result[x].User,
+			Asset:   asset.Margin,
+			Account: resp.Result[x].User,
 			Balance: account.Balance{
 				Currency:  code,
 				Total:     resp.Result[x].Total.Float64(),

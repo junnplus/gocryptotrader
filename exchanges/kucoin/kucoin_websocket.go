@@ -360,8 +360,7 @@ func (ku *Kucoin) processFuturesAccountBalanceEvent(respData []byte) error {
 		return err
 	}
 	ku.Websocket.DataHandler <- account.Change{
-		Exchange: ku.Name,
-		Asset:    asset.Futures,
+		Asset: asset.Futures,
 		Balance: account.Balance{
 			Currency:  currency.NewCode(resp.Currency),
 			Total:     resp.AvailableBalance + resp.HoldBalance,
@@ -688,8 +687,7 @@ func (ku *Kucoin) processAccountBalanceChange(respData []byte) error {
 		return err
 	}
 	ku.Websocket.DataHandler <- account.Change{
-		Exchange: ku.Name,
-		Asset:    asset.Futures,
+		Asset: asset.Futures,
 		Balance: account.Balance{
 			Currency:  currency.NewCode(response.Currency),
 			Total:     response.Total,

@@ -32,7 +32,6 @@ var (
 	errNoCredentialBalances         = errors.New("no balances associated with credentials")
 	errCredentialsAreNil            = errors.New("credentials are nil")
 	errOutOfSequence                = errors.New("out of sequence")
-	errExchangeNameMismatch         = errors.New("exchange name mismatch")
 )
 
 // CollectBalances converts a map of sub-account balances into a slice
@@ -331,11 +330,6 @@ func (s *Service) UpdateBalance(exch string, changes []Change, creds *Credential
 				change.Account,
 				change.Asset,
 				asset.ErrNotSupported))
-			continue
-		}
-		if change.Exchange != "" && strings.ToLower(change.Exchange) != exch {
-			errs = common.AppendError(errs,
-				fmt.Errorf("%w '%s'", errExchangeNameMismatch, change.Exchange))
 			continue
 		}
 

@@ -349,8 +349,7 @@ func (by *Bybit) wsProcessWalletPushData(assetType asset.Item, resp []byte) erro
 	for x := range result.Data {
 		for y := range result.Data[x].Coin {
 			accounts = append(accounts, account.Change{
-				Exchange: by.Name,
-				Asset:    assetType,
+				Asset: assetType,
 				Balance: account.Balance{
 					Currency:  currency.NewCode(result.Data[x].Coin[y].Coin),
 					Total:     result.Data[x].Coin[y].WalletBalance.Float64(),

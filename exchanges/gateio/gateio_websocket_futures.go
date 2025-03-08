@@ -680,9 +680,8 @@ func (g *Gateio) processBalancePushData(data []byte, assetType asset.Item) error
 		}
 		code := currency.NewCode(info[0])
 		accountChange[x] = account.Change{
-			Exchange: g.Name,
-			Asset:    assetType,
-			Account:  resp.Result[x].User,
+			Asset:   assetType,
+			Account: resp.Result[x].User,
 			Balance: account.Balance{
 				Currency:  code,
 				Total:     resp.Result[x].Balance,

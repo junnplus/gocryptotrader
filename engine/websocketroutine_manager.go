@@ -337,12 +337,12 @@ func (m *WebsocketRoutineManager) websocketDataHandler(exchName string, data int
 		log.Warnln(log.WebsocketMgr, d.Message)
 	case account.Change:
 		if m.verbose {
-			m.printAccountHoldingsChangeSummary(d)
+			m.printAccountHoldingsChangeSummary(exchName, d)
 		}
 	case []account.Change:
 		if m.verbose {
 			for x := range d {
-				m.printAccountHoldingsChangeSummary(d[x])
+				m.printAccountHoldingsChangeSummary(exchName, d[x])
 			}
 		}
 	case []trade.Data, trade.Data:
@@ -404,13 +404,13 @@ func (m *WebsocketRoutineManager) printOrderSummary(o *order.Detail, isUpdate bo
 
 // printAccountHoldingsChangeSummary this function will be deprecated when a
 // account holdings update is done.
-func (m *WebsocketRoutineManager) printAccountHoldingsChangeSummary(o account.Change) {
+func (m *WebsocketRoutineManager) printAccountHoldingsChangeSummary(exch string, o account.Change) {
 	if m == nil || atomic.LoadInt32(&m.state) == stoppedState {
 		return
 	}
 	log.Debugf(log.WebsocketMgr,
 		"Account Holdings Balance Changed: %s %s %s has changed balance by %f for account: %s",
-		o.Exchange,
+		exch,
 		o.Asset,
 		o.Currency,
 		o.Free,

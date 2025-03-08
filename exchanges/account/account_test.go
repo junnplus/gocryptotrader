@@ -496,18 +496,6 @@ func TestUpdateBalance(t *testing.T) {
 
 	err = s.UpdateBalance("test", []Change{
 		{
-			Exchange: "test1",
-			Asset:    asset.Spot,
-			Balance: Balance{
-				Currency: currency.BTC,
-				Free:     100,
-			},
-		},
-	}, happyCredentials)
-	assert.ErrorIs(t, err, errExchangeNameMismatch, "expected error")
-
-	err = s.UpdateBalance("test", []Change{
-		{
 			Asset: 6969,
 			Balance: Balance{
 				Currency: currency.BTC,
