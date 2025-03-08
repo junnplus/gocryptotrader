@@ -413,7 +413,7 @@ func (m *WebsocketRoutineManager) printAccountHoldingsChangeSummary(o account.Ch
 		o.Exchange,
 		o.Asset,
 		o.Currency,
-		o.Amount,
+		o.Free,
 		o.Account)
 }
 

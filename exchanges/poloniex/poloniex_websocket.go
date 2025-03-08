@@ -949,10 +949,14 @@ func (p *Poloniex) processAccountBalanceUpdate(notification []interface{}) error
 	// locked and total amounts periodically.
 	p.Websocket.DataHandler <- account.Change{
 		Exchange: p.Name,
-		Currency: code,
 		Asset:    asset.Spot,
 		Account:  deriveWalletType(walletType),
-		Amount:   amount,
+		Balance: account.Balance{
+			Currency:  code,
+			Total:     amount,
+			Free:      amount,
+			UpdatedAt: time.Now(),
+		},
 	}
 	return nil
 }

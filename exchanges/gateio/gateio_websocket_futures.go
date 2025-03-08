@@ -681,10 +681,14 @@ func (g *Gateio) processBalancePushData(data []byte, assetType asset.Item) error
 		code := currency.NewCode(info[0])
 		accountChange[x] = account.Change{
 			Exchange: g.Name,
-			Currency: code,
 			Asset:    assetType,
-			Amount:   resp.Result[x].Balance,
 			Account:  resp.Result[x].User,
+			Balance: account.Balance{
+				Currency:  code,
+				Total:     resp.Result[x].Balance,
+				Free:      resp.Result[x].Balance,
+				UpdatedAt: resp.Result[x].Time.Time(),
+			},
 		}
 	}
 	g.Websocket.DataHandler <- accountChange

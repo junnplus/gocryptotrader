@@ -562,9 +562,13 @@ func (g *Gateio) processSpotBalances(data []byte) error {
 		code := currency.NewCode(resp.Result[x].Currency)
 		accountChanges[x] = account.Change{
 			Exchange: g.Name,
-			Currency: code,
 			Asset:    asset.Spot,
-			Amount:   resp.Result[x].Available.Float64(),
+			Balance: account.Balance{
+				Currency:  code,
+				Total:     resp.Result[x].Total.Float64(),
+				Free:      resp.Result[x].Available.Float64(),
+				UpdatedAt: resp.Result[x].Timestamp.Time(),
+			},
 		}
 	}
 	g.Websocket.DataHandler <- accountChanges
@@ -587,9 +591,14 @@ func (g *Gateio) processMarginBalances(data []byte) error {
 		code := currency.NewCode(resp.Result[x].Currency)
 		accountChange[x] = account.Change{
 			Exchange: g.Name,
-			Currency: code,
 			Asset:    asset.Margin,
-			Amount:   resp.Result[x].Available.Float64(),
+			Balance: account.Balance{
+				Currency:  code,
+				Total:     resp.Result[x].Available.Float64() + resp.Result[x].Freeze.Float64(),
+				Free:      resp.Result[x].Available.Float64(),
+				Hold:      resp.Result[x].Freeze.Float64(),
+				UpdatedAt: resp.Result[x].Timestamp.Time(),
+			},
 		}
 	}
 	g.Websocket.DataHandler <- accountChange
@@ -627,10 +636,14 @@ func (g *Gateio) processCrossMarginBalance(data []byte) error {
 		code := currency.NewCode(resp.Result[x].Currency)
 		accountChanges[x] = account.Change{
 			Exchange: g.Name,
-			Currency: code,
 			Asset:    asset.Margin,
-			Amount:   resp.Result[x].Available.Float64(),
 			Account:  resp.Result[x].User,
+			Balance: account.Balance{
+				Currency:  code,
+				Total:     resp.Result[x].Total.Float64(),
+				Free:      resp.Result[x].Available.Float64(),
+				UpdatedAt: resp.Result[x].Timestamp.Time(),
+			},
 		}
 	}
 	g.Websocket.DataHandler <- accountChanges

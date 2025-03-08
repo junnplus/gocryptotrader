@@ -31,8 +31,10 @@ import (
 	"github.com/thrasher-corp/gocryptotrader/log"
 )
 
-var fetchedFuturesOrderbookMutex sync.Mutex
-var fetchedFuturesOrderbook map[string]bool
+var (
+	fetchedFuturesOrderbookMutex sync.Mutex
+	fetchedFuturesOrderbook      map[string]bool
+)
 
 const (
 	publicBullets  = "/v1/bullet-public"
@@ -180,7 +182,8 @@ func (ku *Kucoin) GetInstanceServers(ctx context.Context) (*WSInstanceServers, e
 			Result:        &response,
 			Verbose:       ku.Verbose,
 			HTTPDebugging: ku.HTTPDebugging,
-			HTTPRecording: ku.HTTPRecording}, nil
+			HTTPRecording: ku.HTTPRecording,
+		}, nil
 	}, request.UnauthenticatedRequest)
 }
 
@@ -358,9 +361,14 @@ func (ku *Kucoin) processFuturesAccountBalanceEvent(respData []byte) error {
 	}
 	ku.Websocket.DataHandler <- account.Change{
 		Exchange: ku.Name,
-		Currency: currency.NewCode(resp.Currency),
 		Asset:    asset.Futures,
-		Amount:   resp.AvailableBalance,
+		Balance: account.Balance{
+			Currency:  currency.NewCode(resp.Currency),
+			Total:     resp.AvailableBalance + resp.HoldBalance,
+			Free:      resp.AvailableBalance,
+			Hold:      resp.HoldBalance,
+			UpdatedAt: resp.Timestamp.Time(),
+		},
 	}
 	return nil
 }
@@ -681,9 +689,13 @@ func (ku *Kucoin) processAccountBalanceChange(respData []byte) error {
 	}
 	ku.Websocket.DataHandler <- account.Change{
 		Exchange: ku.Name,
-		Currency: currency.NewCode(response.Currency),
 		Asset:    asset.Futures,
-		Amount:   response.Available,
+		Balance: account.Balance{
+			Currency:  currency.NewCode(response.Currency),
+			Total:     response.Total,
+			Free:      response.Available,
+			UpdatedAt: response.Time.Time(),
+		},
 	}
 	return nil
 }
@@ -950,7 +962,7 @@ func (ku *Kucoin) processOrderbook(respData []byte, symbol, topic string) error 
 		return err
 	}
 
-	var lastUpdatedTime = response.Timestamp.Time()
+	lastUpdatedTime := response.Timestamp.Time()
 	if response.Timestamp.Time().IsZero() {
 		lastUpdatedTime = time.Now()
 	}
